@@ -7,8 +7,8 @@ influence measurable for the first time in history. When you recommend,
 share, and create content you impact others. Your Klout Score measures 
 that influence on a scale of 1 to 100.
 
-The Klout module is used to diplay the user's Klout Badge (with Klout 
-Score) in the block.
+The Klout API module is used to provide data for use by other modules
+and functionality.
 
 Installation
 ============
