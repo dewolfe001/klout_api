@@ -1,0 +1,76 @@
+<?php
+
+/**
+ * @file
+ * Install time hook user affinity module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function klout_api_schema() {
+  $schema = array();
+  $schema['klout_user_info'] = array(
+    'description' => 'Holds the user info',
+    'fields' => array(
+      'uid' => array(
+        'description' => 'User ID',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'kid' => array(
+        'type' => 'serial',
+        'not null' => TRUE,
+        'description' => 'The internal identifier for any configuration.',
+      ),
+      'account' => array(
+        'description' => 'account info',
+        'type' => 'varchar',
+        'length' => '64',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'provider' => array(
+        'description' => 'The associated service',
+        'type' => 'varchar',
+        'length' => '64',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'primary key' => array('kid'),
+  );
+  $schema['cache_klout'] = drupal_get_schema_unprocessed('system', 'cache');
+  $schema['cache_klout']['description'] = 'Cache table for the Klout scores.';
+  return $schema;
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function klout_api_uninstall() {
+  db_delete('variable')
+    ->condition('name', 'klout_api_%', 'LIKE')
+    ->execute();
+}
+
+/**
+ * Update profile category setting, allow multiple categories to be displayed.
+ */
+function klout_api_update_7000() {
+}
+
+/**
+ * Add a few indexes to speed up contrib modules that query the `points` columns.
+ *
+ * Add index on points columns in userpoints and klout_api_txn, as well as on the two
+ * uid columns in klout_api_txn. No need to add a uid index in userpoints, as the
+ * compound uid_tid index is used instead when needed.
+ *
+ * Since these indexes are added in a 6.x update as well, they need to be conditional
+ * in this update. Otherwise users get errors, which is bad.
+ */
+function klout_api_update_7001() {
+
+}

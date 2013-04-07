@@ -1,0 +1,256 @@
+<?php
+
+/**
+ * @file
+ * Helps with working out User Affinity.
+ */
+
+/**
+ * Implements hook_permission().
+ */
+function klout_api_permission() {
+  return array(
+    'user_profile_scores' => array(
+      'title' => t('User profile scores'),
+    ),
+    'admin_klout' => array(
+      'title' => t('Administer Klout API'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu().
+ *
+ * Here we set up the URLs (menu entries) for the
+ * form examples. Note that most of the menu items
+ * have page callbacks and page arguments set, with
+ * page arguments set to be functions in external files.
+ */
+function klout_api_menu() {
+  $items = array();
+
+  $items['user/%user/klout'] = array(
+    'title' => 'Klout',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('klout_api_connection', 1),
+    'access arguments' => array('user_profile_scores'),
+	'type' => MENU_LOCAL_TASK,
+  );
+
+  $items['admin/config/services/klout_api'] = array(
+    'title' => 'Klout API Config',
+    'description' => 'Klout API Settings',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('klout_api_settings'),
+    'access arguments' => array('admin_klout'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'forms/klout_api_settings.inc',
+  );
+  return $items;
+}
+
+/**
+ * Page callback for our general info page.
+ */
+function klout_api_intro() {
+  $markup = t('The Klout API module allows users to get their Klout and use it.');
+  return array('#markup' => $markup);
+}
+
+/**
+ * Implements hook_help().
+ */
+function klout_api_help($path, $arg) {
+  switch ($path) {
+    case 'admin/config/services/klout_api':
+      // TODO: Update the URL.
+      $help = t('This module serves as a framework to be allow sites to pull Klout scores and use them in a relevant fashion inside of your site and its processes.');
+      break;
+  }
+  if (!empty($help)) {
+    return '<p>' . $help . '</p>';
+  }
+}
+
+function klout_api_connection($form, &$form_state, $account) {
+	$accounts = klout_api_get_accounts($account->uid);
+	$form['uid'] = array('#type' => 'hidden', '#value' => $account->uid);
+
+	$score = klout_api_get_score($account->uid);
+	if ($score < 1) {
+		$score = "not available";
+	}
+	$form['klout_score'] = array(
+	  '#prefix' => '<div id="klout_score">Klout Score: ',
+	  '#suffix' => '</div>',
+	  '#markup' => $score,
+	);
+
+	$form['klout_account'] = array(
+	  '#prefix' => '<div id="klout_account">',
+	  '#suffix' => '</div>',
+	  '#tree' => TRUE,
+	  '#theme' => 'table',
+	  '#header' => array(array('data' => 'Account', 'colspan' => 1), t('Provider')),
+	  '#rows' => array(),
+	);
+
+	$select_provider_tkg = array(
+      "twitter" => "Twitter",
+      "ks" => "Klout",
+      "gp" => "Google+",
+    );
+
+	// push in a new row at the end
+	array_push($accounts, array('kid' => 0, 'account' => '', 'provider' => ''));
+
+	foreach ($accounts as $score) {
+	  $cells = array();
+
+	  /*
+	  $cells[0] = array(			
+		'#name' => 'klout-kid-'.intval($score->kid),
+		'#id' => 'klout-kid'.intval($score->kid),
+		'#type' => 'hidden',
+	  );
+	  */
+
+	  $cells[] = array(
+		'#name' => 'klout-account-'.intval($score->kid),
+		'#id' => 'klout-account-'.intval($score->kid),
+		'#type' => 'textfield',
+		'#size' => '64',
+		'#default_value' => $score->account, 
+		'#value' => $score->account,  
+	  );
+
+	  $select_provider = array();
+	  if ($score->provider != "") {
+		  $select_provider[$score->provider] = $select_provider_tkg[$score->provider];
+		  foreach ($select_provider_tkg as $key => $val) {
+			  if ($select_provider[$key] == "") {
+		  		  $select_provider[$key] = $val;			  
+			  }
+		  }	  	
+	  }
+	  else {
+	  	  $select_provider = $select_provider_tkg;
+	  }
+
+	  $cells[] = array(
+		'#name' => 'klout-provider-'.intval($score->kid),
+		'#id' => 'klout-provider-'.intval($score->kid),
+		'#type' => 'select',
+		'#options' => $select_provider,
+		'#default_value' => $select_provider[$score->provider],
+		'#description' => t('Choose the service provider - '.$score->provider),
+	  );
+
+	  $t = array();
+	  $tr = array();
+
+	  for ($x = 0; $x <= 1; $x++) {
+		  $c = $cells[0]['#name'];  // 'user-row-' . $x;
+		  $t[$c] = $cells[$x];
+		  $tr[$x] = array('data' => $cells[$x]);
+	  }
+	  $form['klout_account'][] = $t;
+	  $form['klout_account']['#rows'][] = $tr;
+	}
+
+	$form['submit'] = array(
+		'#type' => 'submit',
+		'#value' => 'Connect',
+	);
+	return $form;	
+}
+
+function klout_api_connection_submit($form, &$form_state) {
+	$accounts = array();
+	foreach ($form_state['input'] as $key => $val) {
+		// drupal_set_message(print_r($form_state['input'], TRUE));
+		$kid = intval(str_replace('klout-account-','', $key)); 
+		if (strlen($kid) > 0) {
+			$accounts[$kid]['account'] = $form_state['input']['klout-account-'.$kid];
+			$accounts[$kid]['provider'] = $form_state['input']['klout-provider-'.$kid];
+		}
+	}
+	klout_api_put_accounts($form_state['input']['uid'], $accounts);
+}
+
+// get the stored accounts
+function klout_api_get_accounts($uid) {
+	$result = db_select('klout_user_info', 'k')
+		->fields('k', array('kid', 'account', 'provider'))
+		->condition('uid', $uid, '=')
+		->execute()
+		->fetchAllAssoc('kid');
+	// drupal_set_message("<pre>".print_r($result, TRUE)."</pre>");	
+	return $result;
+}
+
+// set accounts 
+function klout_api_put_accounts($uid, $accounts = array()) {
+	// nuke out the old
+	$num_deleted = db_delete('klout_user_info')
+		->condition('uid', $uid)
+		->execute();
+
+	// put in the records
+	foreach ($accounts as $key => $val) {		
+		if (strlen($val['account']) > 2) {
+			// drupal_set_message($uid." has ".$key." is ".$val);
+			$data = array(
+			  'uid' => $uid,
+			  'account' => $val['account'],
+			  'provider' => $val['provider'],
+			);
+			drupal_write_record('klout_user_info', $data);
+		}
+	}
+}
+
+function klout_api_get_score($uid) {
+	module_load_include('php', 'klout_api', 'klout_api_class');
+
+	$kloutapi_key = variable_get('klout_api_key', "");
+	$klout_call = new klout_api_class($kloutapi_key);
+	$klout_info = array();
+
+	if ($klout_user = cache_get($uid, 'cache_klout')) {
+		$klout_info = $klout_user->data;
+		if ($klout_info['score'] > 10) {
+			return $klout_info['score'];
+		}
+	}
+
+	// look up score
+	$klout_accounts = klout_api_get_accounts($uid);
+	foreach ($klout_accounts as $klout_account) {
+		if ($kloutid = $klout_call->KloutIDLookupByName($klout_account->provider,$klout_account->account)) {
+			$klout_info['score'] = ceil($klout_call->KloutScore($kloutid));
+			cache_set($uid, $klout_info, 'cache_klout');
+			return $klout_info['score'];
+			break;
+		}
+	}
+	return -1;	
+}
+
+
+function klout_api_table($header = array(), $headings = array(), $raw_rows = array(), $show_all = TRUE) {
+  $rows = array();
+  $row = "";
+  foreach ($raw_rows as $key => $val) {
+	  if (!array_key_exists($key, $headings)) {
+		$headings[$key] = "";
+	  }
+      $row = array($headings[$key], $val);  
+	  if (($show_all === TRUE) || ($val > 0)) {
+	      $rows[] = array('data' => $row);	
+	  }
+  }
+  return theme('table', array('header' => $header, 'rows' => $rows, 'attributes' => array('class' => array('cl_report_table'))));
+}
+

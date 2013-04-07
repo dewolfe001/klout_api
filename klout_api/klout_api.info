@@ -1,0 +1,5 @@
+name = Klout API
+description = Klout API tie in to discover user Klout scores and cache them. 
+package = Klout
+configure = admin/config/services/klout_api
+core = 7.x
