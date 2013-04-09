@@ -103,7 +103,7 @@ function klout_api_connection($form, &$form_state, $account) {
     );
 
 	// push in a new row at the end
-	array_push($accounts, array('kid' => 0, 'account' => '', 'provider' => ''));
+	array_push($accounts, (object) array('kid' => 0, 'account' => '', 'provider' => ''));
 
 	foreach ($accounts as $score) {
 	  $cells = array();
